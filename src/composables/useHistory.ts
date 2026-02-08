@@ -95,6 +95,7 @@ export function useHistory() {
       model,
       processedAt: Date.now(),
       processingTime,
+      durationSec: file.durationSec,
       // Backward compatibility
       bgmPath: file.result.bgmPath,
       vocalsPath: file.result.vocalsPath,

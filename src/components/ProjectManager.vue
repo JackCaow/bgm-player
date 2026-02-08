@@ -51,7 +51,7 @@ function confirmNewProject() {
   try {
     // Get current config from props or use defaults
     const config = {
-      model: "htdemucs",
+      model: "htdemucs_onnx",
       outputDir: "",
       exportSettings: {
         format: "mp3" as const,

@@ -6,13 +6,11 @@ import type { ThemeMode, ModelOption, AudioFormat, AudioQuality, SeparationMode 
 import { formatPath } from "@/utils/format";
 import { setLocale } from "@/i18n";
 import { useExportSettings } from "@/composables/useExportSettings";
-import { useGPUSettings } from "@/composables/useGPUSettings";
 import { useSeparationSettings } from "@/composables/useSeparationSettings";
 import { useQueueManager } from "@/composables/useQueueManager";
 
 const { t, locale } = useI18n();
 const { exportSettings, isLossless, currentBitrate, updateFormat, updateQuality } = useExportSettings();
-const { gpuSettings, gpuAvailable, gpuInfo, updateEnabled } = useGPUSettings();
 const { settings: separationSettings, updateMode } = useSeparationSettings();
 useQueueManager();
 
@@ -28,50 +26,52 @@ const emit = defineEmits<{
   selectOutputDir: [];
 }>();
 
+function normalizeModel(modelValue: string) {
+  if (modelValue === "htdemucs") return "htdemucs_onnx";
+  if (modelValue === "htdemucs_ft") return "htdemucs_ft_onnx";
+  if (modelValue === "htdemucs_6s") return "htdemucs_6s_onnx";
+  return modelValue;
+}
+
+const activeModel = computed(() => normalizeModel(props.model));
+
 const modelOptions = computed<ModelOption[]>(() => [
   {
-    value: "htdemucs",
-    label: "htdemucs",
-    desc: t("model.htdemucs.desc"),
-    speed: t("model.speed.fast"),
+    value: "htdemucs_onnx",
+    label: "htdemucs (ONNX)",
+    desc: t("model.htdemucs_onnx.desc"),
+    speed: t("model.speed.medium"),
     quality: t("model.quality.excellent"),
   },
   {
-    value: "htdemucs_ft",
-    label: "htdemucs_ft",
-    desc: t("model.htdemucs_ft.desc"),
+    value: "htdemucs_ft_onnx",
+    label: "htdemucs_ft (ONNX)",
+    desc: t("model.htdemucs_ft_onnx.desc"),
     speed: t("model.speed.slow"),
     quality: t("model.quality.top"),
   },
   {
-    value: "htdemucs_6s",
-    label: "htdemucs_6s",
-    desc: t("model.htdemucs_6s.desc"),
-    speed: t("model.speed.fast"),
-    quality: t("model.quality.excellent"),
-  },
-  {
-    value: "mdx_extra",
-    label: "mdx_extra",
-    desc: t("model.mdx_extra.desc"),
-    speed: t("model.speed.medium"),
+    value: "htdemucs_6s_onnx",
+    label: "htdemucs_6s (ONNX)",
+    desc: t("model.htdemucs_6s_onnx.desc"),
+    speed: t("model.speed.slow"),
     quality: t("model.quality.excellent"),
   },
 ]);
 
 // 获取模型支持的轨道选项
 function getAvailableTracks(modelValue: string) {
-  if (modelValue === "htdemucs_6s") {
+  if (modelValue === "htdemucs_onnx" || modelValue === "htdemucs_ft_onnx") {
+    return [
+      { value: "2-track", label: t("separation.twoTrack"), icon: "solar:music-note-2-bold" },
+      { value: "4-track", label: t("separation.fourTrack"), icon: "solar:music-notes-bold" },
+    ];
+  }
+  if (modelValue === "htdemucs_6s_onnx") {
     return [
       { value: "2-track", label: t("separation.twoTrack"), icon: "solar:music-note-2-bold" },
       { value: "4-track", label: t("separation.fourTrack"), icon: "solar:music-notes-bold" },
       { value: "6-track", label: t("separation.sixTrack"), icon: "solar:soundwave-bold" },
-    ];
-  }
-  if (modelValue === "htdemucs" || modelValue === "htdemucs_ft") {
-    return [
-      { value: "2-track", label: t("separation.twoTrack"), icon: "solar:music-note-2-bold" },
-      { value: "4-track", label: t("separation.fourTrack"), icon: "solar:music-notes-bold" },
     ];
   }
   return [
@@ -79,11 +79,16 @@ function getAvailableTracks(modelValue: string) {
   ];
 }
 
-const availableTracks = computed(() => getAvailableTracks(props.model));
+const availableTracks = computed(() => getAvailableTracks(activeModel.value));
 
 // 当模型变化时，检查当前轨道模式是否有效，无效则重置
 watch(() => props.model, (newModel) => {
-  const tracks = getAvailableTracks(newModel);
+  const normalized = normalizeModel(newModel);
+  if (normalized !== newModel) {
+    emit("update:model", normalized);
+  }
+
+  const tracks = getAvailableTracks(normalized);
   const validModes = tracks.map(t => t.value);
   if (!validModes.includes(separationSettings.value.mode)) {
     // 重置为该模型支持的最高轨道数
@@ -114,11 +119,11 @@ function changeLocale(lang: string) {
             v-for="opt in modelOptions"
             :key="opt.value"
             class="model-option"
-            :class="{ active: model === opt.value }"
+            :class="{ active: activeModel === opt.value }"
             @click="emit('update:model', opt.value)"
           >
             <div class="model-radio">
-              <div v-if="model === opt.value" class="radio-dot"></div>
+              <div v-if="activeModel === opt.value" class="radio-dot"></div>
             </div>
             <div class="model-info">
               <span class="model-name">{{ opt.label }}</span>
@@ -210,34 +215,6 @@ function changeLocale(lang: string) {
           >
             {{ t(`quality.${qual}`) }}
           </button>
-        </div>
-      </div>
-
-      <!-- GPU Acceleration -->
-      <div class="setting-group">
-        <label class="setting-label">
-          <Icon icon="solar:cpu-bolt-bold-duotone" width="20" />
-          GPU 加速
-          <span v-if="gpuAvailable" class="gpu-badge available">{{ gpuInfo }}</span>
-          <span v-else class="gpu-badge unavailable">不可用</span>
-        </label>
-        <div class="gpu-toggle">
-          <label class="toggle-switch">
-            <input
-              type="checkbox"
-              :checked="gpuSettings.enabled"
-              :disabled="!gpuAvailable"
-              @change="updateEnabled(($event.target as HTMLInputElement).checked)"
-            />
-            <span class="toggle-slider"></span>
-          </label>
-          <span class="toggle-label">
-            {{ gpuSettings.enabled ? "已启用" : "已禁用" }}
-          </span>
-        </div>
-        <div v-if="!gpuAvailable" class="gpu-hint">
-          <Icon icon="solar:info-circle-linear" width="16" />
-          <span>GPU 加速需要 NVIDIA CUDA 或 Apple Metal 支持</span>
         </div>
       </div>
 
@@ -431,98 +408,4 @@ function changeLocale(lang: string) {
   }
 }
 
-/* GPU Settings */
-.gpu-badge {
-  margin-left: auto;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.gpu-badge.available {
-  background: rgba(29, 185, 84, 0.2);
-  color: var(--success);
-}
-
-.gpu-badge.unavailable {
-  background: rgba(255, 164, 43, 0.2);
-  color: var(--warning);
-}
-
-.gpu-toggle {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 44px;
-  height: 24px;
-}
-
-.toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: var(--bg-card);
-  border: 2px solid var(--border);
-  transition: 0.3s;
-  border-radius: 24px;
-}
-
-.toggle-slider:before {
-  position: absolute;
-  content: "";
-  height: 16px;
-  width: 16px;
-  left: 2px;
-  bottom: 2px;
-  background-color: var(--text-secondary);
-  transition: 0.3s;
-  border-radius: 50%;
-}
-
-input:checked + .toggle-slider {
-  background-color: var(--primary);
-  border-color: var(--primary);
-}
-
-input:checked + .toggle-slider:before {
-  transform: translateX(20px);
-  background-color: #000;
-}
-
-input:disabled + .toggle-slider {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.toggle-label {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.gpu-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: rgba(255, 164, 43, 0.1);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
 </style>

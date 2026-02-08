@@ -36,6 +36,19 @@ const emit = defineEmits<{
 
 const historyWaveformCanvas = ref<HTMLCanvasElement | null>(null);
 
+const durationSec = computed(() => {
+  const d = props.selectedHistory?.durationSec;
+  if (!d) return null;
+  return Math.max(1, Math.round(d));
+});
+
+const speedX = computed(() => {
+  const duration = durationSec.value;
+  const processingTime = props.selectedHistory?.processingTime;
+  if (!duration || !processingTime) return null;
+  return duration / processingTime;
+});
+
 // Get tracks from selected history
 const tracks = computed<TrackInfo[]>(() => {
   if (!props.selectedHistory) return [];
@@ -150,6 +163,26 @@ watch(
               <span class="info-value">
                 {{ formatDuration(selectedHistory.processingTime, locale) }}
               </span>
+            </div>
+          </div>
+          <div v-if="durationSec" class="info-card">
+            <div class="info-icon">
+              <Icon icon="solar:music-note-2-bold-duotone" width="20" />
+            </div>
+            <div class="info-content">
+              <span class="info-label">{{ t("history.duration") }}</span>
+              <span class="info-value">
+                {{ formatDuration(durationSec, locale) }}
+              </span>
+            </div>
+          </div>
+          <div v-if="speedX" class="info-card">
+            <div class="info-icon">
+              <Icon icon="solar:speedometer-bold-duotone" width="20" />
+            </div>
+            <div class="info-content">
+              <span class="info-label">{{ t("history.speed") }}</span>
+              <span class="info-value">{{ speedX.toFixed(2) }}x</span>
             </div>
           </div>
         </div>

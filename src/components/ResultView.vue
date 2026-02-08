@@ -3,12 +3,13 @@ import { ref, watch, computed, nextTick } from "vue";
 import { Icon } from "@iconify/vue";
 import { useI18n } from "vue-i18n";
 import type { FileItem, TrackInfo } from "@/types";
+import { formatDuration } from "@/utils/format";
 import MergeSection from "./MergeSection.vue";
 import MultiTrackMergeSection from "./MultiTrackMergeSection.vue";
 import AudioPlayer from "./AudioPlayer.vue";
 import { useWaveform } from "@/composables/useWaveform";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const { drawWaveform } = useWaveform();
 
 const props = defineProps<{
@@ -73,6 +74,23 @@ const isLegacyTwoTrack = computed(() => {
          tracks.value.some(t => t.track_type === "no_vocals");
 });
 
+const processingTimeSec = computed(() => {
+  const ms = props.selectedFile?.processingTime;
+  if (!ms) return null;
+  return Math.max(1, Math.round(ms / 1000));
+});
+
+const durationSec = computed(() => {
+  const d = props.selectedFile?.durationSec;
+  if (!d) return null;
+  return Math.max(1, Math.round(d));
+});
+
+const speedX = computed(() => {
+  if (!durationSec.value || !processingTimeSec.value) return null;
+  return durationSec.value / processingTimeSec.value;
+});
+
 // Draw waveforms for all tracks when tracks change
 watch(
   () => tracks.value,
@@ -126,7 +144,23 @@ function getTrackIcon(trackType: string): string {
 
     <div v-else class="result-detail">
       <div class="result-header">
-        <h3>{{ selectedFile.name }}</h3>
+        <div class="result-title">
+          <h3>{{ selectedFile.name }}</h3>
+          <div v-if="processingTimeSec || durationSec || speedX" class="result-metrics">
+            <span v-if="durationSec" class="metric">
+              <Icon icon="solar:music-note-2-bold-duotone" width="14" />
+              {{ t("result.duration") }}: {{ formatDuration(durationSec, locale) }}
+            </span>
+            <span v-if="processingTimeSec" class="metric">
+              <Icon icon="solar:stopwatch-bold-duotone" width="14" />
+              {{ t("result.processingTime") }}: {{ formatDuration(processingTimeSec, locale) }}
+            </span>
+            <span v-if="speedX" class="metric">
+              <Icon icon="solar:speedometer-bold-duotone" width="14" />
+              {{ t("result.speed") }}: {{ speedX.toFixed(2) }}x
+            </span>
+          </div>
+        </div>
         <span v-if="tracks.length > 0" class="track-count">
           {{ tracks.length }} {{ t("tracks.all") }}
         </span>
@@ -193,6 +227,25 @@ function getTrackIcon(trackType: string): string {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
+}
+
+.result-title h3 {
+  margin: 0;
+}
+
+.result-metrics {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .track-count {

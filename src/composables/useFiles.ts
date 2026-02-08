@@ -50,6 +50,18 @@ export function useFiles() {
     return files.value.find((f) => f.id === selectedFileId.value) || null;
   });
 
+  async function probeDuration(file: FileItem) {
+    try {
+      const durationSec = await invoke<number>("probe_audio_duration", { input: file.path });
+      if (Number.isFinite(durationSec) && durationSec > 0) {
+        file.durationSec = durationSec;
+      }
+    } catch (e) {
+      // Best-effort only; duration is used for efficiency metrics.
+      console.warn("Failed to probe audio duration:", e);
+    }
+  }
+
   function handleDroppedFiles(paths: string[]) {
     const newFiles = paths
       .filter((p) => isAudioFile(p))
@@ -63,6 +75,10 @@ export function useFiles() {
       }));
 
     files.value.push(...newFiles);
+
+    for (const f of newFiles) {
+      probeDuration(f);
+    }
 
     if (newFiles.length > 0 && !selectedFileId.value) {
       selectedFileId.value = newFiles[0].id;

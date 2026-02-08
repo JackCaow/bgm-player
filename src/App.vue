@@ -2,10 +2,13 @@
 import { onMounted } from "vue";
 import { Icon } from "@iconify/vue";
 import { useI18n } from "vue-i18n";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTheme } from "@/composables/useTheme";
 import { useHistory } from "@/composables/useHistory";
 import { useFiles } from "@/composables/useFiles";
 import { useMerge } from "@/composables/useMerge";
+import { useVideoMix } from "@/composables/useVideoMix";
+import { useKokoroTts } from "@/composables/useKokoroTts";
 import { useDragAndDrop } from "@/composables/useDragAndDrop";
 import { useConfirm } from "@/composables/useConfirm";
 import {
@@ -14,6 +17,9 @@ import {
   ResultView,
   HistoryView,
   MergeView,
+  VideoMixView,
+  KokoroTtsView,
+  PodcastAgentView,
   SettingsView,
 } from "@/components";
 import NotificationContainer from "@/components/NotificationContainer.vue";
@@ -24,9 +30,21 @@ import { useGlobalPlayer } from "@/composables/useGlobalPlayer";
 const { t } = useI18n();
 const { confirm } = useConfirm();
 const { isVisible: showGlobalPlayer } = useGlobalPlayer();
+const isTauriWindow = typeof window !== "undefined"
+  && ("__TAURI__" in window || "__TAURI_INTERNALS__" in window);
+const appWindow = isTauriWindow ? getCurrentWindow() : null;
 
 function handleShowPlayer() {
   showGlobalPlayer.value = true;
+}
+
+async function handleTitlebarDblClick() {
+  if (!appWindow) return;
+  try {
+    await appWindow.toggleMaximize();
+  } catch (_error) {
+    // Ignore in browser mode
+  }
 }
 
 // Composables
@@ -84,6 +102,60 @@ const {
   isMerging,
   mergedPath,
 } = useMerge();
+
+const {
+  videoPath,
+  bgmPath,
+  outputDir: videoMixOutputDir,
+  mode: videoMixMode,
+  bgmVolume: videoMixBgmVolume,
+  videoVolume: videoMixVideoVolume,
+  bgmOffsetSec,
+  loopBgm,
+  fadeInSec,
+  fadeOutSec,
+  isMixing,
+  progress: videoMixProgress,
+  status: videoMixStatus,
+  outputPath: videoMixOutputPath,
+  canStart: canStartVideoMix,
+  selectVideo,
+  selectBgm,
+  selectOutputDir: selectVideoMixOutputDir,
+  startMix,
+  clear: clearVideoMix,
+} = useVideoMix();
+
+const {
+  text: ttsText,
+  ttsEngine: ttsEngine,
+  voice: ttsVoice,
+  language: ttsLanguage,
+  speed: ttsSpeed,
+  outputDir: ttsOutputDir,
+  bgmPath: ttsBgmPath,
+  bgmVolume: ttsBgmVolume,
+  ttsVolume: ttsTtsVolume,
+  loopBgm: ttsLoopBgm,
+  refAudioPath: ttsRefAudioPath,
+  refText: ttsRefText,
+  isRecording: ttsIsRecording,
+  recordingSeconds: ttsRecordingSeconds,
+  isGenerating: ttsIsGenerating,
+  isMerging: ttsIsMerging,
+  outputPath: ttsOutputPath,
+  dryOutputPath: ttsDryOutputPath,
+  canGenerate: ttsCanGenerate,
+  canMerge: ttsCanMerge,
+  selectOutputDir: selectTtsOutputDir,
+  selectBgm: selectTtsBgm,
+  selectRefAudio: selectTtsRefAudio,
+  startRecording: startTtsRecording,
+  stopRecording: stopTtsRecording,
+  clear: clearTts,
+  generate: generateTts,
+  mergePreview: mergeTtsPreview,
+} = useKokoroTts();
 
 // Drag and drop
 const { isDragging } = useDragAndDrop((filePaths) => {
@@ -187,9 +259,13 @@ function handleHistoryMerge() {
 </script>
 
 <template>
-  <div class="app">
-    <!-- macOS Title Bar Drag Region -->
-    <div class="titlebar-drag-region"></div>
+  <div class="app" :class="{ 'with-titlebar': isTauriWindow }">
+    <div
+      v-if="isTauriWindow"
+      class="app-titlebar-spacer"
+      data-tauri-drag-region
+      @dblclick="handleTitlebarDblClick"
+    ></div>
 
     <!-- Notifications -->
     <NotificationContainer />
@@ -291,6 +367,81 @@ function handleHistoryMerge() {
           @reset-volumes="resetAllVolumes"
           @clear="handleClearAllTracks"
         />
+
+        <!-- Video Mix View -->
+        <VideoMixView
+          v-if="activeTab === 'videoMix'"
+          :video-path="videoPath"
+          :bgm-path="bgmPath"
+          :output-dir="videoMixOutputDir"
+          :mode="videoMixMode"
+          :bgm-volume="videoMixBgmVolume"
+          :video-volume="videoMixVideoVolume"
+          :bgm-offset-sec="bgmOffsetSec"
+          :loop-bgm="loopBgm"
+          :fade-in-sec="fadeInSec"
+          :fade-out-sec="fadeOutSec"
+          :is-mixing="isMixing"
+          :progress="videoMixProgress"
+          :status="videoMixStatus"
+          :output-path="videoMixOutputPath"
+          :can-start="canStartVideoMix"
+          @select-video="selectVideo"
+          @select-bgm="selectBgm"
+          @select-output-dir="selectVideoMixOutputDir"
+          @start="startMix"
+          @clear="clearVideoMix"
+          @update:mode="videoMixMode = $event"
+          @update:bgm-volume="videoMixBgmVolume = $event"
+          @update:video-volume="videoMixVideoVolume = $event"
+          @update:bgm-offset-sec="bgmOffsetSec = $event"
+          @update:loop-bgm="loopBgm = $event"
+          @update:fade-in-sec="fadeInSec = $event"
+          @update:fade-out-sec="fadeOutSec = $event"
+        />
+
+        <KokoroTtsView
+          v-if="activeTab === 'tts'"
+          :text="ttsText"
+          :tts-engine="ttsEngine"
+          :voice="ttsVoice"
+          :language="ttsLanguage"
+          :speed="ttsSpeed"
+          :output-dir="ttsOutputDir"
+          :bgm-path="ttsBgmPath"
+          :bgm-volume="ttsBgmVolume"
+          :tts-volume="ttsTtsVolume"
+          :loop-bgm="ttsLoopBgm"
+          :is-generating="ttsIsGenerating"
+          :is-merging="ttsIsMerging"
+          :output-path="ttsOutputPath"
+          :dry-output-path="ttsDryOutputPath"
+          :can-generate="ttsCanGenerate"
+          :can-merge="ttsCanMerge"
+          :ref-audio-path="ttsRefAudioPath"
+          :ref-text="ttsRefText"
+          :is-recording="ttsIsRecording"
+          :recording-seconds="ttsRecordingSeconds"
+          @update:text="ttsText = $event"
+          @update:tts-engine="ttsEngine = $event"
+          @update:voice="ttsVoice = $event"
+          @update:language="ttsLanguage = $event"
+          @update:speed="ttsSpeed = $event"
+          @update:bgm-volume="ttsBgmVolume = $event"
+          @update:tts-volume="ttsTtsVolume = $event"
+          @update:loop-bgm="ttsLoopBgm = $event"
+          @select-output-dir="selectTtsOutputDir"
+          @select-bgm="selectTtsBgm"
+          @select-ref-audio="selectTtsRefAudio"
+          @start-recording="startTtsRecording"
+          @stop-recording="stopTtsRecording"
+          @update:ref-text="ttsRefText = $event"
+          @clear="clearTts"
+          @generate="generateTts"
+          @merge="mergeTtsPreview"
+        />
+
+        <PodcastAgentView v-show="activeTab === 'podcast'" />
 
         <!-- Settings View -->
         <SettingsView

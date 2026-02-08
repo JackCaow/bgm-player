@@ -3,5 +3,8 @@ export { default as QueueView } from "./QueueView.vue";
 export { default as ResultView } from "./ResultView.vue";
 export { default as HistoryView } from "./HistoryView.vue";
 export { default as MergeView } from "./MergeView.vue";
+export { default as VideoMixView } from "./VideoMixView.vue";
+export { default as KokoroTtsView } from "./KokoroTtsView.vue";
+export { default as PodcastAgentView } from "./PodcastAgentView.vue";
 export { default as SettingsView } from "./SettingsView.vue";
 export { default as MergeSection } from "./MergeSection.vue";

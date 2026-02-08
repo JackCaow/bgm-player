@@ -48,6 +48,7 @@ export interface FileItem {
   error?: string;
   startTime?: number;
   endTime?: number;
+  durationSec?: number;
   priority?: number; // Higher number = higher priority
   retryCount?: number;
   estimatedTimeRemaining?: number; // in seconds
@@ -64,6 +65,7 @@ export interface HistoryItem {
   model: string;
   processedAt: number;
   processingTime?: number;
+  durationSec?: number;
   sourceSize?: number;
   // Backward compatibility
   bgmPath?: string;
@@ -74,7 +76,7 @@ export interface HistoryItem {
 export type ThemeMode = "light" | "dark" | "system";
 
 // Tab type
-export type TabType = "queue" | "result" | "history" | "merge" | "settings";
+export type TabType = "queue" | "result" | "history" | "merge" | "videoMix" | "tts" | "podcast" | "settings";
 
 // Model option for settings
 export interface ModelOption {

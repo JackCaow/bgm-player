@@ -24,16 +24,15 @@ const { state, handleConfirm, handleCancel } = useConfirm();
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel @click="handleCancel">
+        <AlertDialogCancel
+          @click="handleCancel"
+          class="border-[color:var(--primary)] text-[color:var(--primary)] hover:bg-[color:color-mix(in_srgb,var(--primary)_10%,transparent)] hover:text-[color:var(--primary)]"
+        >
           {{ state.cancelText }}
         </AlertDialogCancel>
         <AlertDialogAction
           @click="handleConfirm"
-          class="confirm-button"
-          :style="{
-            backgroundColor: state.type === 'danger' ? 'var(--error)' : state.type === 'warning' ? 'var(--warning)' : 'var(--primary)',
-            color: '#fff'
-          }"
+          class="bg-[color:var(--primary)] text-black hover:bg-[color:color-mix(in_srgb,var(--primary)_88%,black)]"
         >
           {{ state.confirmText }}
         </AlertDialogAction>
@@ -47,4 +46,3 @@ const { state, handleConfirm, handleCancel } = useConfirm();
   border: none !important;
 }
 </style>
-

@@ -218,9 +218,23 @@ function getTrackIcon(trackType: string): string {
   transition: all 0.2s;
 }
 
+.track-item:hover {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+  background: var(--bg-hover);
+}
+
 .track-item.selected {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
+  background: color-mix(in srgb, var(--primary) 10%, var(--bg));
+}
+
+.track-item.selected:hover {
   border-color: var(--primary);
-  background: rgba(29, 185, 84, 0.05);
+  background: color-mix(in srgb, var(--primary) 14%, var(--bg));
+}
+
+.track-item:not(.selected) .track-checkbox {
+  color: var(--text-secondary);
 }
 
 .track-checkbox {

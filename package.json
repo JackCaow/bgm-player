@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:dev:release": "tauri dev --release",
+    "tauri:build": "tauri build",
+    "tauri:build:app": "tauri build -b app",
+    "tauri:build:dmg": "tauri build -b dmg"
   },
   "dependencies": {
     "@iconify/vue": "^5.0.0",

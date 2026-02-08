@@ -85,6 +85,30 @@ const emit = defineEmits<{
       </button>
       <button
         class="nav-item"
+        :class="{ active: activeTab === 'videoMix' }"
+        @click="emit('update:activeTab', 'videoMix')"
+      >
+        <Icon icon="solar:videocamera-record-bold-duotone" width="20" />
+        <span>{{ t("nav.videoMix") }}</span>
+      </button>
+      <button
+        class="nav-item"
+        :class="{ active: activeTab === 'tts' }"
+        @click="emit('update:activeTab', 'tts')"
+      >
+        <Icon icon="solar:microphone-3-bold-duotone" width="20" />
+        <span>{{ t("nav.tts") }}</span>
+      </button>
+      <button
+        class="nav-item"
+        :class="{ active: activeTab === 'podcast' }"
+        @click="emit('update:activeTab', 'podcast')"
+      >
+        <Icon icon="solar:chat-square-call-bold-duotone" width="20" />
+        <span>{{ t("nav.podcast") }}</span>
+      </button>
+      <button
+        class="nav-item"
         :class="{ active: activeTab === 'settings' }"
         @click="emit('update:activeTab', 'settings')"
       >

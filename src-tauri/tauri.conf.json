@@ -16,12 +16,14 @@
         "title": "BGM Extractor",
         "width": 1200,
         "height": 750,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
         "resizable": true,
         "fullscreen": false,
         "center": true,
         "minWidth": 900,
-        "minHeight": 600,
-        "titleBarStyle": "Overlay"
+        "minHeight": 600
       }
     ],
     "security": {
@@ -42,13 +44,21 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "onnx_models/*.onnx",
+      "onnx_models/*.json",
+      "tts_models/kokoro/*",
+      "python-runtime/**/*",
+      "binaries/libonnxruntime-*"
+    ],
     "externalBin": [
-      "binaries/bgm-extractor",
       "binaries/ffmpeg",
       "binaries/ffprobe"
     ],
     "macOS": {
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "entitlements": null,
+      "infoPlist": "Info.plist"
     }
   },
   "plugins": {

@@ -25,6 +25,25 @@
     --input: 0 0% 88%;
     --ring: 142 76% 36%;
     --radius: 0.5rem;
+    --ui-background: 0 0% 96%;
+    --ui-foreground: 0 0% 8%;
+    --ui-card: 0 0% 100%;
+    --ui-card-foreground: 0 0% 8%;
+    --ui-popover: 0 0% 100%;
+    --ui-popover-foreground: 0 0% 8%;
+    --ui-primary: 142 76% 36%;
+    --ui-primary-foreground: 0 0% 0%;
+    --ui-secondary: 0 0% 94%;
+    --ui-secondary-foreground: 0 0% 8%;
+    --ui-muted: 0 0% 91%;
+    --ui-muted-foreground: 0 0% 33%;
+    --ui-accent: 0 0% 91%;
+    --ui-accent-foreground: 0 0% 8%;
+    --ui-destructive: 351 84% 52%;
+    --ui-destructive-foreground: 0 0% 98%;
+    --ui-border: 0 0% 88%;
+    --ui-input: 0 0% 88%;
+    --ui-ring: 142 76% 36%;
   }
 
   .dark,
@@ -49,6 +68,25 @@
     --border: 0 0% 12%;            /* #1f1f1f - very subtle border */
     --input: 0 0% 12%;
     --ring: 142 76% 36%;
+    --ui-background: 0 0% 7%;
+    --ui-foreground: 0 0% 100%;
+    --ui-card: 0 0% 9%;
+    --ui-card-foreground: 0 0% 100%;
+    --ui-popover: 0 0% 9%;
+    --ui-popover-foreground: 0 0% 100%;
+    --ui-primary: 142 76% 36%;
+    --ui-primary-foreground: 0 0% 0%;
+    --ui-secondary: 0 0% 16%;
+    --ui-secondary-foreground: 0 0% 100%;
+    --ui-muted: 0 0% 16%;
+    --ui-muted-foreground: 0 0% 70%;
+    --ui-accent: 0 0% 16%;
+    --ui-accent-foreground: 0 0% 100%;
+    --ui-destructive: 351 84% 52%;
+    --ui-destructive-foreground: 0 0% 100%;
+    --ui-border: 0 0% 12%;
+    --ui-input: 0 0% 12%;
+    --ui-ring: 142 76% 36%;
   }
 }
 
@@ -174,36 +212,31 @@ html, body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-family: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  text-rendering: optimizeLegibility;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.3s, color 0.3s;
 }
 
 #app { height: 100%; overflow: hidden; }
 .app {
   height: 100%;
+  display: flex;
+  flex-direction: column;
   position: relative;
   background: var(--bg);
   transition: background-color 0.3s;
-  padding-top: 38px; /* Space for macOS traffic lights */
 }
 
-/* macOS Title Bar Drag Region */
-.titlebar-drag-region {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 38px;
-  -webkit-app-region: drag;
-  app-region: drag;
-  z-index: 9999;
-  background: var(--bg);
-  transition: background-color 0.3s;
+.app-titlebar-spacer {
+  height: 28px;
+  flex-shrink: 0;
 }
 
 /* Drag Overlay */
@@ -257,7 +290,8 @@ body {
 /* Layout */
 .layout {
   display: flex;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   gap: 8px;
   padding: 8px;
 }

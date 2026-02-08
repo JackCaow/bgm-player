@@ -106,7 +106,7 @@ function handleClick(event: MouseEvent) {
   flex-grow: 1;
   overflow: hidden;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--bg-hover);
   transition: height 0.2s;
 }
 
@@ -118,7 +118,7 @@ function handleClick(event: MouseEvent) {
 .slider-range {
   position: absolute;
   height: 100%;
-  background: linear-gradient(90deg, #1DB954 0%, #1ed760 100%);
+  background: var(--primary);
   transition: width 0.1s ease-out;
   border-radius: 9999px;
 }
@@ -129,7 +129,7 @@ function handleClick(event: MouseEvent) {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: white;
+  background: var(--text);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   transform: translateX(-50%) scale(0);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -144,7 +144,7 @@ function handleClick(event: MouseEvent) {
 
 .slider-root.dragging .slider-thumb {
   transform: translateX(-50%) scale(1.2);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5), 0 0 0 6px rgba(29, 185, 84, 0.2);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5), 0 0 0 6px color-mix(in srgb, var(--primary) 25%, transparent);
 }
 
 .slider-thumb::before {
@@ -155,7 +155,7 @@ function handleClick(event: MouseEvent) {
   transform: translate(-50%, -50%);
   width: 24px;
   height: 24px;
-  background: rgba(29, 185, 84, 0.2);
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
   border-radius: 50%;
   opacity: 0;
   transition: all 0.2s;
@@ -168,11 +168,6 @@ function handleClick(event: MouseEvent) {
 .slider-root.dragging .slider-thumb::before {
   width: 32px;
   height: 32px;
-  background: rgba(29, 185, 84, 0.3);
-}
-
-/* Light theme */
-[data-theme="light"] .slider-track {
-  background: rgba(0, 0, 0, 0.1);
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
 }
 </style>
