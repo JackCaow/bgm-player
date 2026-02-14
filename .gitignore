@@ -18,3 +18,13 @@ src-tauri/binaries
 # Env
 .env
 .env.local
+
+# Large local artifacts (use CDN/external storage instead of Git)
+onnx_models/
+src-tauri/onnx_models/
+output_rust_onnx/
+output_rust_onnx_v2/
+output_python_benchmark/
+*.onnx
+*.onnx.gz
+src-tauri/third_party/CosyVoice/asset/*.wav
