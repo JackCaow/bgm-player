@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { parseError, formatErrorMessage } from "@/utils/errorHandler";
 import { AUDIO_EXTENSIONS, blobToWavBytes } from "@/utils/format";
+import { normalizeSelectedPath } from "@/utils/path";
 import { useNotifications } from "./useNotifications";
 
 export interface PodcastRole {
@@ -43,6 +44,7 @@ interface PodcastProgressPayload {
 
 interface PodcastAgentSettings {
   ttsEngine: string;
+  zipvoiceVariant: string;
   style: string;
   language: string;
   speed: number;
@@ -69,8 +71,12 @@ const defaultRoles: PodcastRole[] = [
   { name: "Guest", voice: "am_adam", persona: "Guest who provides practical experience, examples, and balanced counterpoints" },
 ];
 
+type TtsEngine = "kokoro" | "zipvoice";
+type ZipVoiceVariant = "basic" | "distill" | "dialog" | "dialog-stereo";
+
 const topic = ref("");
 const ttsEngine = ref("kokoro");
+const zipvoiceVariant = ref<ZipVoiceVariant>("distill");
 const style = ref("Practical, insightful, and conversational with clear takeaways");
 const language = ref("zh-cn");
 const speed = ref(1.0);
@@ -110,13 +116,110 @@ const totalSections = ref(0);
 let podcastSettingsLoaded = false;
 let podcastProgressListenerReady = false;
 
-function defaultRoleVoiceByEngine(_engine: string, _roleIndex = 0): string {
-  return "af_bella";
+function normalizeEngine(engine: string): TtsEngine {
+  return (engine || "").trim().toLowerCase() === "zipvoice" ? "zipvoice" : "kokoro";
 }
 
-function isVoiceCompatible(_engine: string, voice: string): boolean {
+function normalizeZipVoiceVariant(variant: string): ZipVoiceVariant {
+  const normalized = (variant || "").trim().toLowerCase().replace(/_/g, "-");
+  if (normalized === "basic" || normalized === "distill" || normalized === "dialog" || normalized === "dialog-stereo") {
+    return normalized;
+  }
+  return "distill";
+}
+
+function isDialogZipVoiceVariant(variant: string): boolean {
+  const normalized = normalizeZipVoiceVariant(variant);
+  return normalized === "dialog" || normalized === "dialog-stereo";
+}
+
+function hasDialogSpeakerTag(text: string): boolean {
+  return /\[(S1|S2)\]/i.test(text);
+}
+
+function toDialogTaggedText(roleName: string, text: string): string {
+  const raw = (text || "").trim();
+  if (!raw) return raw;
+  if (hasDialogSpeakerTag(raw)) return raw;
+
+  const roleIndex = Math.max(0, roles.value.findIndex((r) => r.name === roleName));
+  const speaker = roleIndex % 2 === 0 ? "S1" : "S2";
+  return `[${speaker}] ${raw}`;
+}
+
+function buildDialogRoleSpeakerMap(dialogLines: PodcastLine[]): Map<string, "S1" | "S2"> {
+  const map = new Map<string, "S1" | "S2">();
+  let nextSpeaker: "S1" | "S2" = "S1";
+
+  for (const line of dialogLines) {
+    const roleName = (line.role || "").trim();
+    if (!roleName || map.has(roleName)) continue;
+    map.set(roleName, nextSpeaker);
+    nextSpeaker = nextSpeaker === "S1" ? "S2" : "S1";
+  }
+
+  if (map.size === 0) {
+    for (const role of roles.value) {
+      const roleName = (role.name || "").trim();
+      if (!roleName || map.has(roleName)) continue;
+      map.set(roleName, nextSpeaker);
+      nextSpeaker = nextSpeaker === "S1" ? "S2" : "S1";
+      if (map.size >= 2) break;
+    }
+  }
+
+  return map;
+}
+
+function buildDialogOneShotTextFromLines(
+  dialogLines: PodcastLine[],
+  roleSpeakerMap: Map<string, "S1" | "S2">
+): string {
+  return dialogLines
+    .map((line, idx) => {
+      const raw = (line.text || "").trim();
+      if (!raw) return "";
+      if (hasDialogSpeakerTag(raw)) return raw;
+      const roleName = (line.role || "").trim();
+      const speaker = roleName
+        ? (roleSpeakerMap.get(roleName) || (idx % 2 === 0 ? "S1" : "S2"))
+        : (idx % 2 === 0 ? "S1" : "S2");
+      return `[${speaker}] ${raw}`;
+    })
+    .filter((line) => !!line.trim())
+    .join("\n");
+}
+
+function resolveDialogPrimaryRefs(roleSpeakerMap: Map<string, "S1" | "S2">) {
+  const s1Role = roles.value.find((role) => roleSpeakerMap.get((role.name || "").trim()) === "S1");
+  const s2Role = roles.value.find((role) => roleSpeakerMap.get((role.name || "").trim()) === "S2");
+
+  const s1Audio = (s1Role?.refAudioPath || "").trim();
+  const s1Text = (s1Role?.refText || "").trim();
+  const s2Audio = (s2Role?.refAudioPath || "").trim();
+  const s2Text = (s2Role?.refText || "").trim();
+
+  return {
+    s1RoleName: s1Role?.name || "S1",
+    s2RoleName: s2Role?.name || "S2",
+    s1Audio,
+    s1Text,
+    s2Audio,
+    s2Text,
+  };
+}
+
+function defaultRoleVoiceByEngine(engine: string, roleIndex = 0): string {
+  if (normalizeEngine(engine) === "zipvoice") return "custom";
+  const defaults = ["af_bella", "am_adam", "bf_emma", "bm_george"];
+  return defaults[roleIndex % defaults.length];
+}
+
+function isVoiceCompatible(engine: string, voice: string): boolean {
   const v = (voice || "").trim();
-  return !!v;
+  if (!v) return false;
+  if (normalizeEngine(engine) === "zipvoice") return v === "custom";
+  return v !== "default" && v !== "custom";
 }
 
 function loadPodcastSettings() {
@@ -128,15 +231,18 @@ function loadPodcastSettings() {
     const parsed = JSON.parse(raw) as Partial<PodcastAgentSettings>;
 
     style.value = typeof parsed.style === "string" ? parsed.style : style.value;
-    ttsEngine.value = "kokoro";
+    ttsEngine.value = normalizeEngine(typeof parsed.ttsEngine === "string" ? parsed.ttsEngine : ttsEngine.value);
+    zipvoiceVariant.value = normalizeZipVoiceVariant(
+      typeof parsed.zipvoiceVariant === "string" ? parsed.zipvoiceVariant : zipvoiceVariant.value
+    );
     if (style.value === LEGACY_DEFAULT_STYLE) {
       style.value = "Practical, insightful, and conversational with clear takeaways";
     }
     language.value = typeof parsed.language === "string" ? parsed.language : language.value;
     speed.value = Number.isFinite(parsed.speed) ? Math.min(1.6, Math.max(0.6, Number(parsed.speed))) : speed.value;
     pauseMs.value = Number.isFinite(parsed.pauseMs) ? Math.min(4000, Math.max(0, Number(parsed.pauseMs))) : pauseMs.value;
-    outputDir.value = typeof parsed.outputDir === "string" ? parsed.outputDir : outputDir.value;
-    bgmPath.value = typeof parsed.bgmPath === "string" ? parsed.bgmPath : bgmPath.value;
+    outputDir.value = typeof parsed.outputDir === "string" ? normalizeSelectedPath(parsed.outputDir) : outputDir.value;
+    bgmPath.value = typeof parsed.bgmPath === "string" ? normalizeSelectedPath(parsed.bgmPath) : bgmPath.value;
     bgmVolume.value = Number.isFinite(parsed.bgmVolume) ? Math.min(2, Math.max(0, Number(parsed.bgmVolume))) : bgmVolume.value;
     podcastVolume.value = Number.isFinite(parsed.podcastVolume) ? Math.min(2, Math.max(0, Number(parsed.podcastVolume))) : podcastVolume.value;
     loopBgm.value = typeof parsed.loopBgm === "boolean" ? parsed.loopBgm : loopBgm.value;
@@ -151,6 +257,8 @@ function loadPodcastSettings() {
           name: r.name,
           voice: r.voice,
           persona: typeof r.persona === "string" ? r.persona : "",
+          refAudioPath: typeof r.refAudioPath === "string" ? normalizeSelectedPath(r.refAudioPath) : "",
+          refText: typeof r.refText === "string" ? r.refText : "",
         }));
       if (validRoles.length >= 2) {
         validRoles.forEach((r) => {
@@ -175,6 +283,7 @@ function savePodcastSettings() {
     const payload: PodcastAgentSettings = {
       style: style.value,
       ttsEngine: ttsEngine.value,
+      zipvoiceVariant: zipvoiceVariant.value,
       language: language.value,
       speed: speed.value,
       pauseMs: pauseMs.value,
@@ -196,10 +305,62 @@ function savePodcastSettings() {
 
 loadPodcastSettings();
 watch(
-  [ttsEngine, style, language, speed, pauseMs, outputDir, bgmPath, bgmVolume, podcastVolume, loopBgm, llmApiBase, llmApiKey, llmModel],
+  [ttsEngine, zipvoiceVariant, style, language, speed, pauseMs, outputDir, bgmPath, bgmVolume, podcastVolume, loopBgm, llmApiBase, llmApiKey, llmModel],
   savePodcastSettings
 );
 watch(roles, savePodcastSettings, { deep: true });
+
+watch(zipvoiceVariant, (variant) => {
+  zipvoiceVariant.value = normalizeZipVoiceVariant(variant);
+}, { immediate: true });
+
+watch(ttsEngine, (engine) => {
+  const normalized = normalizeEngine(engine);
+  ttsEngine.value = normalized;
+
+  roles.value = roles.value.map((role, index) => {
+    const next = { ...role };
+    if (!isVoiceCompatible(normalized, next.voice)) {
+      next.voice = defaultRoleVoiceByEngine(normalized, index);
+    }
+    return next;
+  });
+
+  if (lines.value.length > 0) {
+    const roleVoiceMap = new Map(roles.value.map((r) => [r.name, r.voice]));
+    lines.value = lines.value.map((line) => {
+      const mapped = roleVoiceMap.get(line.role);
+      if (mapped) {
+        return { ...line, voice: mapped };
+      }
+      if (!isVoiceCompatible(normalized, line.voice)) {
+        return { ...line, voice: defaultRoleVoiceByEngine(normalized) };
+      }
+      return line;
+    });
+  }
+}, { immediate: true });
+
+// Sync role voice changes to corresponding lines
+watch(
+  () => roles.value.map((r) => ({ name: r.name, voice: r.voice })),
+  (newRoles, oldRoles) => {
+    if (!oldRoles || lines.value.length === 0) return;
+    for (let i = 0; i < newRoles.length; i++) {
+      const prev = oldRoles[i];
+      const curr = newRoles[i];
+      if (!prev || !curr) continue;
+      if (prev.name === curr.name && prev.voice !== curr.voice) {
+        for (const line of lines.value) {
+          if (line.role === curr.name && line.voice === prev.voice) {
+            line.voice = curr.voice;
+          }
+        }
+      }
+    }
+  },
+  { deep: true }
+);
 
 export function usePodcastAgent() {
   const { success, error: showError } = useNotifications();
@@ -226,13 +387,17 @@ export function usePodcastAgent() {
   const canGenerate = computed(() => {
     if (isGenerating.value || !topic.value.trim()) return false;
     if (roles.value.length < 2) return false;
-    return roles.value.every((r) => r.name.trim() && isVoiceCompatible(ttsEngine.value, r.voice));
+    return roles.value.every((r) => !!r.name.trim() && isVoiceCompatible(ttsEngine.value, r.voice));
   });
 
   const canSynthesizeAll = computed(() => {
     if (isGenerating.value || isSynthesizingAll.value || lineSynthesizingIndex.value !== null) return false;
     return lines.value.length > 0;
   });
+
+  const isDialogOneShotMode = computed(() =>
+    normalizeEngine(ttsEngine.value) === "zipvoice" && isDialogZipVoiceVariant(zipvoiceVariant.value)
+  );
 
   const canMergeLines = computed(() => {
     if (isMerging.value || lines.value.length === 0) return false;
@@ -253,7 +418,7 @@ export function usePodcastAgent() {
     try {
       const selected = await open({ directory: true, multiple: false });
       if (selected) {
-        outputDir.value = selected as string;
+        outputDir.value = normalizeSelectedPath(selected as string);
       }
     } catch (e) {
       console.error("Failed to select output directory:", e);
@@ -267,7 +432,7 @@ export function usePodcastAgent() {
         filters: [{ name: "Audio", extensions: AUDIO_EXTENSIONS }],
       });
       if (selected) {
-        bgmPath.value = selected as string;
+        bgmPath.value = normalizeSelectedPath(selected as string);
       }
     } catch (e) {
       console.error("Failed to select BGM:", e);
@@ -294,7 +459,8 @@ export function usePodcastAgent() {
         filters: [{ name: "Audio", extensions: AUDIO_EXTENSIONS }],
       });
       if (selected && roles.value[index]) {
-        roles.value[index].refAudioPath = selected as string;
+        const path = normalizeSelectedPath(selected as string);
+        roles.value[index].refAudioPath = path;
       }
     } catch (e) {
       console.error("Failed to select ref audio:", e);
@@ -424,6 +590,11 @@ export function usePodcastAgent() {
     const line = lines.value[index];
     if (!line) return;
     line.text = value;
+    if (isDialogOneShotMode.value) {
+      dryOutputPath.value = null;
+      outputPath.value = null;
+      return;
+    }
     if (lineAudioPaths.value[index]) {
       lineAudioPaths.value[index] = "";
       dryOutputPath.value = null;
@@ -435,11 +606,20 @@ export function usePodcastAgent() {
     const line = lines.value[index];
     if (!line) return;
     line.voice = value;
+    if (isDialogOneShotMode.value) {
+      dryOutputPath.value = null;
+      outputPath.value = null;
+      return;
+    }
     if (lineAudioPaths.value[index]) {
       lineAudioPaths.value[index] = "";
       dryOutputPath.value = null;
       outputPath.value = null;
     }
+  }
+
+  function getRoleByName(roleName: string): PodcastRole | undefined {
+    return roles.value.find((r) => r.name === roleName);
   }
 
   async function generate() {
@@ -510,6 +690,12 @@ export function usePodcastAgent() {
   }
 
   async function synthesizeLine(index: number, silent = false) {
+    if (isDialogOneShotMode.value) {
+      if (!silent) {
+        showError("Dialog 模式不支持逐句生成", "请使用“一次生成完整对话”按钮", 6000);
+      }
+      return;
+    }
     if (index < 0 || index >= lines.value.length) return;
     const line = lines.value[index];
     if (!line.text.trim()) {
@@ -522,27 +708,33 @@ export function usePodcastAgent() {
       showError(`第 ${index + 1} 句音色不匹配`, `当前模型 ${ttsEngine.value} 不支持音色 ${line.voice}`, 6000);
       return;
     }
+    const role = getRoleByName(line.role);
+    const refAudioPath = (role?.refAudioPath || "").trim();
+    const refText = (role?.refText || "").trim();
+    const lineText = isDialogZipVoiceVariant(zipvoiceVariant.value)
+      ? toDialogTaggedText(line.role, line.text)
+      : line.text;
+    const zipvoiceNeedsRef = normalizeEngine(ttsEngine.value) === "zipvoice"
+      && !isDialogZipVoiceVariant(zipvoiceVariant.value);
+    if (zipvoiceNeedsRef) {
+      if (!refAudioPath || !refText) {
+        showError(`第 ${index + 1} 句缺少参考信息`, "ZipVoice 需要角色参考音频和参考文本", 8000);
+        return;
+      }
+    }
 
     lineSynthesizingIndex.value = index;
     try {
-      // Find the role's refAudioPath and refText if voice is "custom"
-      const matchingRole = roles.value.find((r) => r.name === line.role);
-      const refAudio = line.voice === "custom" && matchingRole?.refAudioPath
-        ? matchingRole.refAudioPath
-        : null;
-      const refTextVal = line.voice === "custom" && matchingRole?.refText
-        ? matchingRole.refText
-        : null;
-
       const response = await invoke<{ output_path: string }>("synthesize_kokoro_tts", {
-        text: line.text,
+        text: lineText,
         voice: line.voice,
         language: language.value,
         speed: speed.value,
         outputDir: outputDir.value || null,
         ttsEngine: ttsEngine.value,
-        refAudioPath: refAudio,
-        refText: refTextVal,
+        zipvoiceVariant: zipvoiceVariant.value,
+        refAudioPath: refAudioPath || null,
+        refText: refText || null,
       });
 
       lineAudioPaths.value[index] = response.output_path;
@@ -566,6 +758,78 @@ export function usePodcastAgent() {
     dryOutputPath.value = null;
     outputPath.value = null;
 
+    if (isDialogOneShotMode.value) {
+      try {
+        const validLines = lines.value.filter((line) => !!line.text.trim());
+        if (validLines.length === 0) {
+          showError("脚本为空", "请先填写至少一句对话", 6000);
+          return;
+        }
+
+        const roleSpeakerMap = buildDialogRoleSpeakerMap(validLines);
+        const dialogText = buildDialogOneShotTextFromLines(validLines, roleSpeakerMap);
+        if (!dialogText.trim()) {
+          showError("脚本为空", "请先填写至少一句对话", 6000);
+          return;
+        }
+        const refs = resolveDialogPrimaryRefs(roleSpeakerMap);
+        const s1Incomplete = (!!refs.s1Audio && !refs.s1Text) || (!refs.s1Audio && !!refs.s1Text);
+        const s2Incomplete = (!!refs.s2Audio && !refs.s2Text) || (!refs.s2Audio && !!refs.s2Text);
+        if (s1Incomplete) {
+          showError(
+            "S1 参考信息不完整",
+            `角色 ${refs.s1RoleName} 的参考音频与参考文本需要同时填写或同时留空`,
+            8000
+          );
+          return;
+        }
+        if (s2Incomplete) {
+          showError(
+            "S2 参考信息不完整",
+            `角色 ${refs.s2RoleName} 的参考音频与参考文本需要同时填写或同时留空`,
+            8000
+          );
+          return;
+        }
+        if (refs.s1Text && refs.s2Text) {
+          if (refs.s1Text === refs.s2Text) {
+            showError(
+              "参考文本不合理",
+              "S1 和 S2 的参考文本不能完全相同，请填写各自音频的真实内容。",
+              10000
+            );
+            return;
+          }
+        }
+
+        const response = await invoke<{ output_path: string }>("synthesize_kokoro_tts", {
+          text: dialogText,
+          voice: "custom",
+          language: language.value,
+          speed: speed.value,
+          outputDir: outputDir.value || null,
+          ttsEngine: ttsEngine.value,
+          zipvoiceVariant: zipvoiceVariant.value,
+          refAudioPath: refs.s1Audio || null,
+          refText: refs.s1Text || null,
+          refAudioPath2: refs.s2Audio || null,
+          refText2: refs.s2Text || null,
+        });
+
+        dryOutputPath.value = response.output_path;
+        outputPath.value = response.output_path;
+        lineAudioPaths.value = [];
+        success("Dialog 一次生成完成，可直接试听或继续混入 BGM", response.output_path, 5000);
+      } catch (e) {
+        const errorDetails = parseError(e);
+        const errorMessage = formatErrorMessage(errorDetails);
+        showError("Dialog 语音生成失败", errorMessage, 12000);
+      } finally {
+        isSynthesizingAll.value = false;
+      }
+      return;
+    }
+
     // Build batch items for all non-empty lines
     const batchItems: { text: string; voice: string; language: string; speed: number; ref_audio_path?: string; ref_text?: string }[] = [];
     const batchIndexMap: number[] = []; // maps batch index -> line index
@@ -573,16 +837,29 @@ export function usePodcastAgent() {
       const line = lines.value[i];
       if (!line.text.trim()) continue;
       if (!isVoiceCompatible(ttsEngine.value, line.voice)) continue;
-      const matchingRole = roles.value.find((r) => r.name === line.role);
-      const refAudio = line.voice === "custom" && matchingRole?.refAudioPath ? matchingRole.refAudioPath : undefined;
-      const refTextVal = line.voice === "custom" && matchingRole?.refText ? matchingRole.refText : undefined;
+      const role = getRoleByName(line.role);
+      const refAudioPath = (role?.refAudioPath || "").trim();
+      const refText = (role?.refText || "").trim();
+      const zipvoiceNeedsRef = normalizeEngine(ttsEngine.value) === "zipvoice"
+        && !isDialogZipVoiceVariant(zipvoiceVariant.value);
+      if (zipvoiceNeedsRef && (!refAudioPath || !refText)) {
+        showError(
+          "角色参考信息不完整",
+          `第 ${i + 1} 句（${line.role}）缺少 ZipVoice 参考音频或参考文本`,
+          10000
+        );
+        isSynthesizingAll.value = false;
+        return;
+      }
       batchItems.push({
-        text: line.text,
+        text: isDialogZipVoiceVariant(zipvoiceVariant.value)
+          ? toDialogTaggedText(line.role, line.text)
+          : line.text,
         voice: line.voice,
         language: language.value,
         speed: speed.value,
-        ref_audio_path: refAudio,
-        ref_text: refTextVal,
+        ref_audio_path: refAudioPath || undefined,
+        ref_text: refText || undefined,
       });
       batchIndexMap.push(i);
     }
@@ -596,6 +873,7 @@ export function usePodcastAgent() {
       const response = await invoke<{ output_paths: string[] }>("synthesize_tts_batch", {
         items: batchItems,
         ttsEngine: ttsEngine.value,
+        zipvoiceVariant: zipvoiceVariant.value,
         outputDir: outputDir.value || null,
       });
       for (let j = 0; j < response.output_paths.length; j++) {
@@ -665,6 +943,7 @@ export function usePodcastAgent() {
   return {
     topic,
     ttsEngine,
+    zipvoiceVariant,
     style,
     language,
     speed,
@@ -698,6 +977,7 @@ export function usePodcastAgent() {
     totalSections,
     canGenerate,
     canSynthesizeAll,
+    isDialogOneShotMode,
     canMergeLines,
     canMerge,
     roleRecordingIndex,
