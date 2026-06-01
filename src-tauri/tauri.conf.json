@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "BGM Extractor",
+  "productName": "BGM Player",
   "version": "0.1.0",
   "identifier": "com.bgmextractor.app",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "BGM Extractor",
+        "title": "BGM Player",
         "width": 1200,
         "height": 750,
         "resizable": true,
