@@ -35,7 +35,7 @@
 | 加速 EP | **先 CPU EP**,coreml 放 cargo feature | 先保证正确性;CoreML 可能因算子碎片化反而更慢,后续 benchmark 再开 |
 | 输入解码 | **ffmpeg** → f32 PCM | 不新增依赖,格式覆盖全 |
 | 模型权重存储 | **gitignore + `export_onnx.py` 生成,`tauri:build` 时打进包** | 仓库保持轻量,不引入 Git LFS |
-| 质量未达标时 | 以平价为目标;ONNX 路径始终有 Python 回退兜底,不阻塞合入;达标后默认走 ONNX | 即使未完全达标也不退化用户体验 *(待 spec 评审确认)* |
+| 质量未达标时 | 以平价为目标;ONNX 路径始终有 Python 回退兜底,不阻塞合入;达标后默认走 ONNX | 即使未完全达标也不退化用户体验 |
 
 ## 4. 架构与数据流
 
@@ -53,6 +53,8 @@ extract_bgm(model, separation_mode, ...):
 ```
 输出目录布局与事件**保持不变**:`<output_dir>/htdemucs/<input_stem>/vocals.wav` 与 `no_vocals.wav`;沿用 `extraction-progress` 事件(`progress`/`status`/`stage`),前端/History/结果页零改动。
 
+**与现有后处理尾段的衔接(评审要点)**:当前 `extract_bgm` 是单体函数——binary/python 的选择在**前段**,而进度解析、退出码检查、输出文件校验、导出格式转换(`lib.rs` 约 398–422)、`ExtractResult` 组装(约 433–450)都在**后段共享**。本 PR 的新分流应置于 binary/python spawn **之前**;ONNX 路径产出同样的 `vocals.wav`/`no_vocals.wav` 后,**汇入同一后段共享逻辑**(复用而非复制格式转换与结果组装)。`separate_htdemucs_2track` 返回的 `OutputPaths` 即作为该后段的输入。这样"前端零改动"才成立。实现计划需明确这一汇入点。
+
 ### 4.2 分离管线(精确复刻 `bgm_extractor.py` + demucs `apply_model`)
 1. **解码**: `ffmpeg -i <input> -f f32le -acodec pcm_f32le -ac 2 -ar 44100 -` → stdout 读 PCM → 去交织成 `[2][N]`。ffmpeg 路径用现有 `get_ffmpeg_path()`。
 2. **归一化**: `ref = wav.mean(axis=0)`; `wav = (wav - ref.mean()) / ref.std()`(脚本第 103–104 行)。保存 `ref_mean`、`ref_std`。
@@ -61,7 +63,7 @@ extract_bgm(model, separation_mode, ...):
    - 步长 `stride = round(segment_len * (1 - overlap))`,`overlap = 0.25`。
    - 过渡权重窗 `weight`(三角/中心加权),逐段输出乘权累加、权重累加,最后相除。
    - 参照 Stemgen `src/demucs.rs` 的实现移植;`shifts` 默认 0(不做随机移位)。
-4. **逐块推理**: 每段 pad/trim 到 `segment_len`,组 `ort` 张量 `[1, 2, segment_len]`,`session.run` 得 `[1, 4, 2, segment_len]`。源顺序 `["drums","bass","other","vocals"]`。
+4. **逐块推理**: 每段 pad/trim 到 `segment_len`,组 `ort` 张量 `[1, 2, segment_len]`,`session.run` 得 `[1, 4, 2, segment_len]`。源顺序**假定**为 `["drums","bass","other","vocals"]`(vocals=索引 3)——但这取决于导出图的实际输出顺序,**须在导出后用一次性断言核对**(如比对已知输入的输出能量分布),不可盲信硬编码索引。
 5. **拼接 + 反归一化**: 得 `[4][2][N]`;`sources = sources * ref_std + ref_mean`。
 6. **2 轨输出**: `vocals = sources[3]`;`no_vocals(BGM) = sum(sources, axis=0) - vocals`(脚本 two-stems 同逻辑)。clip 到 [-1,1]、转 16-bit、写 `vocals.wav` 与 `no_vocals.wav`。
 7. **进度**: 按 `已处理段数 / 总段数` 发 `extraction-progress`(比解析 demucs stderr 更平滑)。
