@@ -656,6 +656,8 @@ pub fn separate_htdemucs_2track(
 ```
 Add `compute_ref_mean_std` matching the script: `ref = (left+right)/2` per-sample; `mean = ref.mean()`; `std = ref.std()` (population std; guard std==0 → 1.0).
 
+> **Memory note:** this holds 4 sources × 2 channels × full-length `f32` buffers plus per-plane `OverlapAdder` accumulators at once — for a long song that's a large allocation (e.g. a 5-min stereo track ≈ 4×2×13.2M×4B ≈ 420MB for the sources alone, ~2× with accumulators). Acceptable for now; if it becomes a problem, stream/segment-write later (out of scope).
+
 - [ ] **Step 2: Build**
 
 Run: `cd src-tauri && cargo build 2>&1 | tail -8`
@@ -692,8 +694,10 @@ if use_onnx {
     let res_dir = app.path().resource_dir().unwrap_or_default();
     let w = window.clone();
     let progress = move |p: f32, s: &str| {
+        // Reuse the existing "processing" stage (NOT a new "separating") so the
+        // frontend, which may switch on `stage`, needs zero changes (reviewer note).
         let _ = w.emit("extraction-progress", ProgressPayload {
-            progress: p, status: s.to_string(), stage: "separating".to_string(),
+            progress: p, status: s.to_string(), stage: "processing".to_string(),
         });
     };
     match separator::separate_htdemucs_2track(&res_dir, Path::new(&input), &output_dir, &get_ffmpeg_path(&app), &progress) {
@@ -714,7 +718,7 @@ if use_onnx {
 
 - [ ] **Step 2: Extract the shared tail into `finalize_extraction`**
 
-The current code after a successful extraction (format conversion at ~398–422, `ExtractResult` assembly at ~433–450) must be reachable by both paths. Refactor that tail into a helper `finalize_extraction(...)` that takes the produced stem paths + model/mode and returns the same `Result` the command returns. The Python branch calls it too (behavior unchanged). Keep the refactor minimal and behavior-preserving.
+The current code after a successful extraction must be reachable by both paths. This tail is roughly **lines ~350–450**, and includes (a) the track-list building + per-track output-file discovery/existence check (`result_dir.join("{track}.wav")`, ~359–396), (b) format conversion (~398–422), and (c) `ExtractResult` assembly (~433–450). Refactor this whole span into a helper `finalize_extraction(...)` that takes the produced stem paths + model/mode and returns the same `Result` the command returns. The Python branch calls it too (behavior unchanged). Do NOT extract only the 398–450 part — that would skip the file-validation/track-discovery block the ONNX path also needs. Keep the refactor minimal and behavior-preserving.
 
 - [ ] **Step 3: Build + run the app**
 
