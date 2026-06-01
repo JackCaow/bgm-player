@@ -39,6 +39,8 @@ pub struct SegmentPlan {
 
 impl SegmentPlan {
     pub fn new(total: usize, seg: usize, stride: usize) -> Self {
+        debug_assert!(stride > 0, "stride must be > 0 (else infinite loop)");
+        debug_assert!(stride <= seg, "stride must be <= seg (else gaps/silent samples)");
         let mut segments = Vec::new();
         let mut start = 0;
         while start < total {
@@ -79,6 +81,7 @@ impl OverlapAdder {
     }
 
     pub fn add(&mut self, start: usize, chunk: &[f32]) {
+        debug_assert_eq!(chunk.len(), self.seg, "chunk must be exactly seg samples");
         let total = self.out.len();
         for j in 0..self.seg {
             let idx = start + j;
@@ -96,7 +99,7 @@ impl OverlapAdder {
                 self.out[i] /= self.wsum[i];
             }
         }
-        std::mem::take(&mut self.out)
+        self.out
     }
 }
 
@@ -111,6 +114,69 @@ mod tests {
         assert!(w.iter().all(|&x| x > 0.0));
         assert!((w[0] - w[7]).abs() < 1e-6);
         assert!(w[3] > w[0]); // center heavier than edge
+    }
+
+    #[test]
+    fn triangular_weight_exact_values() {
+        // Exact demucs window: cat([arange(1,L//2+1), arange(L-L//2,0,-1)]) / max.
+        // This pins the actual shape so a corrupted/uniform window is caught.
+        let w8 = triangular_weight(8);
+        let expected8 = [0.25, 0.5, 0.75, 1.0, 1.0, 0.75, 0.5, 0.25];
+        assert_eq!(w8.len(), expected8.len());
+        for (i, (&got, &want)) in w8.iter().zip(expected8.iter()).enumerate() {
+            assert!((got - want).abs() < 1e-6, "L=8 i={i}: {got} vs {want}");
+        }
+
+        let w5 = triangular_weight(5);
+        let third = 1.0_f32 / 3.0;
+        let expected5 = [third, 2.0 * third, 1.0, 2.0 * third, third];
+        assert_eq!(w5.len(), expected5.len());
+        for (i, (&got, &want)) in w5.iter().zip(expected5.iter()).enumerate() {
+            assert!((got - want).abs() < 1e-6, "L=5 i={i}: {got} vs {want}");
+        }
+    }
+
+    #[test]
+    fn overlap_add_cross_fades_at_seam() {
+        // Two overlapping segments with different per-chunk "model output":
+        // segment A is all 1.0, segment B is all 3.0. With the triangular
+        // window, the overlap region must cross-fade MONOTONICALLY from ~1.0
+        // up to ~3.0. A UNIFORM window would instead produce a flat plateau at
+        // (1+3)/2 = 2.0, which is NOT monotonic -> this test fails on uniform.
+        let total = 1500usize;
+        let seg = 1000usize;
+        let stride = 500usize;
+        let plan = SegmentPlan::new(total, seg, stride);
+        // Expect exactly two segments: [0,1000) and [500,1500), overlap 500..1000.
+        assert_eq!(plan.segments.len(), 2);
+        assert_eq!(plan.segments[0].start, 0);
+        assert_eq!(plan.segments[1].start, 500);
+
+        let mut acc = OverlapAdder::new(total, seg);
+        acc.add(plan.segments[0].start, &vec![1.0_f32; seg]);
+        acc.add(plan.segments[1].start, &vec![3.0_f32; seg]);
+        let out = acc.finish();
+
+        // Endpoints outside the overlap reflect their single contributing chunk.
+        assert!((out[0] - 1.0).abs() < 1e-4, "start should be ~1.0, got {}", out[0]);
+        assert!((out[total - 1] - 3.0).abs() < 1e-4, "end should be ~3.0, got {}", out[total - 1]);
+
+        // Strict interior of the overlap region (avoid off-by-one at the exact
+        // boundary indices). Must be non-decreasing AND actually span 1->3.
+        let lo = 520usize;
+        let hi = 980usize;
+        for i in lo..hi {
+            assert!(
+                out[i + 1] >= out[i] - 1e-5,
+                "overlap must be monotonic non-decreasing at i={i}: {} -> {} \
+                 (a uniform window would give a flat 2.0 plateau here)",
+                out[i],
+                out[i + 1]
+            );
+        }
+        // And it genuinely transitions across the seam (not a flat plateau).
+        assert!(out[lo] < 1.5, "low side of overlap should be near 1.0, got {}", out[lo]);
+        assert!(out[hi] > 2.5, "high side of overlap should be near 3.0, got {}", out[hi]);
     }
 
     #[test]
