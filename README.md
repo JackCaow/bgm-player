@@ -12,7 +12,7 @@
 
 <p align="center">English · <a href="README.zh-CN.md">简体中文</a></p>
 
-<p align="center"><img src="docs/screenshot.png" alt="BGM Player screenshot" width="760"></p>
+<p align="center"><img src="assets/screenshot.png" alt="BGM Player screenshot" width="760"></p>
 
 ## Features
 
@@ -92,10 +92,10 @@ For a fully self-contained bundle, the app can ship standalone sidecar binaries 
 src/                 Vue 3 frontend (components, composables, i18n, utils)
 src-tauri/           Rust backend (Tauri commands in src/lib.rs)
 script/              Python extraction scripts + dev launcher (dev.sh)
-docs/                Roadmap, research notes, screenshots
+assets/              Screenshots and static assets used by the README
 ```
 
-See [ROADMAP.md](ROADMAP.md) for planned features and [docs/demucs-research.md](docs/demucs-research.md) for model background.
+See [ROADMAP.md](ROADMAP.md) for planned features.
 
 ## Contributing
 

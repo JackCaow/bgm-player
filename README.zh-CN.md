@@ -12,7 +12,7 @@
 
 <p align="center"><a href="README.md">English</a> · 简体中文</p>
 
-<p align="center"><img src="docs/screenshot.png" alt="BGM Player 截图" width="760"></p>
+<p align="center"><img src="assets/screenshot.png" alt="BGM Player 截图" width="760"></p>
 
 ## 功能特性
 
@@ -92,10 +92,10 @@ npm run tauri:build      # 原生安装包(macOS 上为 .app / .dmg)
 src/                 Vue 3 前端(组件、composables、i18n、工具)
 src-tauri/           Rust 后端(Tauri 命令在 src/lib.rs)
 script/              Python 提取脚本 + 开发启动脚本(dev.sh)
-docs/                路线图、调研笔记、截图
+assets/              README 使用的截图等静态资源
 ```
 
-更多规划见 [ROADMAP.md](ROADMAP.md),模型背景见 [docs/demucs-research.md](docs/demucs-research.md)。
+更多规划见 [ROADMAP.md](ROADMAP.md)。
 
 ## 贡献
 
