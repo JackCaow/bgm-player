@@ -95,8 +95,6 @@ script/              Python extraction scripts + dev launcher (dev.sh)
 assets/              Screenshots and static assets used by the README
 ```
 
-See [ROADMAP.md](ROADMAP.md) for planned features.
-
 ## Contributing
 
 Issues and pull requests are welcome. There's no enforced linter/formatter — please match the existing code style (2-space indentation, double quotes in TS/JS, PascalCase Vue components, `useX.ts` composables).

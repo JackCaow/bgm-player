@@ -21,3 +21,4 @@ src-tauri/binaries
 
 # Internal docs (not published)
 docs/
+ROADMAP.md

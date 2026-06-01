@@ -95,8 +95,6 @@ script/              Python 提取脚本 + 开发启动脚本(dev.sh)
 assets/              README 使用的截图等静态资源
 ```
 
-更多规划见 [ROADMAP.md](ROADMAP.md)。
-
 ## 贡献
 
 欢迎提交 Issue 与 Pull Request。项目未强制配置 linter/formatter,请与现有代码风格保持一致(2 空格缩进、TS/JS 使用双引号、Vue 组件 PascalCase 命名、composables 采用 `useX.ts`)。
