@@ -42,11 +42,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": [
-      "binaries/bgm-extractor",
-      "binaries/ffmpeg",
-      "binaries/ffprobe"
-    ],
     "macOS": {
       "minimumSystemVersion": "10.15"
     }

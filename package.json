@@ -1,5 +1,5 @@
 {
-  "name": "get-bgm",
+  "name": "bgm-player",
   "version": "1.0.0",
   "description": "BGM Extractor - Extract background music from songs",
   "type": "module",
