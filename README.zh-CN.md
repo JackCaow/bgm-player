@@ -77,6 +77,31 @@ npm run tauri:build      # 原生安装包(macOS 上为 .app / .dmg)
 
 若要打包成完全自包含的安装包,应用可以携带独立的 sidecar 二进制(`bgm-extractor`、`ffmpeg`、`ffprobe`),放在 `src-tauri/binaries/` 下:用 `script/build_binary.py`(PyInstaller)构建提取器二进制并加入 FFmpeg/FFprobe,然后在 `src-tauri/tauri.conf.json` 中重新启用 `externalBin`。否则应用在运行时依赖系统 Python(已装 Demucs)与系统 FFmpeg。
 
+### 独立构建(离线 ONNX)
+
+推荐的发布方式是内置 ONNX 路径:由原生 Rust 分离器借助 [ONNX Runtime](https://onnxruntime.ai/) 运行 htdemucs 模型,因此 **htdemucs 2 轨(人声 + 伴奏)提取可完全离线运行,用户机器上无需 Python/PyTorch。**
+
+1. **先生成 ONNX 模型。** 权重文件(`src-tauri/resources/models/htdemucs.onnx`,约 300 MB)已被 gitignore,所以必须先在磁盘上生成,然后才能打包 —— 否则打包会失败(该资源是必需的):
+
+   ```bash
+   .venv/bin/python script/export_onnx.py
+   ```
+
+2. **构建安装包:**
+
+   ```bash
+   npm run tauri:build      # 原生安装包(macOS 上为 .app / .dmg)
+   ```
+
+   模型在 `src-tauri/tauri.conf.json` 的 `bundle.resources` 中以映射形式声明(`"resources/models/htdemucs.onnx": "models/htdemucs.onnx"`),会把它放到 `.app` 内的 `Contents/Resources/models/htdemucs.onnx` —— 正好是 Rust 端 `resolve_model_path` 在生产环境查找的位置。
+
+说明:
+
+- ONNX 路径仅覆盖 **htdemucs 2 轨**。其它模型(`htdemucs_ft`、`htdemucs_6s`、`mdx_extra`)及多轨模式仍走 Python/Demucs 环境。
+- 设置 `BGM_DISABLE_ONNX=1`(任意值)可强制走旧的 Python 路径,即使是 htdemucs 2 轨。
+- ONNX Runtime 当前使用 CPU 执行提供器(EP)。`coreml` 这个 ort feature 是未来用于开启 CoreML/ANE 加速(Apple Silicon)的开关。
+- 打包出的 `.app` 体积较大(约 300 MB 模型 + 静态链接的 ONNX Runtime),最终 `.app`/`.dmg` 会达到数百 MB。
+
 ## 模型
 
 | 模型 | 音轨数 | 说明 |
