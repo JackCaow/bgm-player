@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tauri::{Emitter, Manager, Window};
 
-mod separator;
+pub mod separator;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrackInfo {
