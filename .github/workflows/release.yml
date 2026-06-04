@@ -63,13 +63,22 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # 代码签名(Developer ID Application 证书)。未配置这些 secret 时构建未签名包。
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # 公证(Apple ID + 专用密码方式)。未配置时跳过公证。
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           # tag 触发时创建/附加 Release;手动触发时 tagName 为空,仅构建。
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('BGM Player {0}', github.ref_name) || '' }}
           releaseBody: |
-            macOS (Apple Silicon) 构建,**未签名/未公证**。首次打开:右键 → 打开,或执行
-            `xattr -dr com.apple.quarantine "/Applications/BGM Player.app"`。
+            macOS (Apple Silicon) 构建。
+            若提示「已损坏 / 无法打开」(未签名构建):拖到「应用程序」后执行
+            `xattr -cr "/Applications/BGM Player.app"` 再打开。已签名+公证的构建可直接双击。
           releaseDraft: false
           prerelease: false
           args: --target aarch64-apple-darwin
