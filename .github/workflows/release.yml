@@ -1,0 +1,85 @@
+name: Release (macOS arm64)
+
+# 打 v* tag 时:构建 macOS .dmg/.app 并附到对应 GitHub Release。
+# 手动触发(workflow_dispatch)时:仅构建并上传为 workflow artifact(不发 Release)。
+#
+# 说明:htdemucs.onnx(~304MB)被 gitignore,但 bundle.resources 要求它存在才能构建,
+# 因此 CI 先从仓库的 `models` Release 资产下载该模型,再做 Tauri 构建。
+# 一次性准备(本地用 owner 账号):
+#   gh release create models src-tauri/resources/models/htdemucs.onnx \
+#     --title "Model assets" --notes "Bundled ONNX weights for CI builds" --latest=false
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # 创建/附加 Release
+
+env:
+  MODEL_RELEASE_TAG: models
+  MODEL_ASSET: htdemucs.onnx
+
+jobs:
+  build:
+    runs-on: macos-14 # Apple Silicon (aarch64)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Download bundled ONNX model
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p src-tauri/resources/models
+          gh release download "$MODEL_RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$MODEL_ASSET" \
+            --output src-tauri/resources/models/htdemucs.onnx
+          ls -la src-tauri/resources/models/
+
+      - name: Build (and release on tag) with Tauri
+        id: tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          # tag 触发时创建/附加 Release;手动触发时 tagName 为空,仅构建。
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('BGM Player {0}', github.ref_name) || '' }}
+          releaseBody: |
+            macOS (Apple Silicon) 构建,**未签名/未公证**。首次打开:右键 → 打开,或执行
+            `xattr -dr com.apple.quarantine "/Applications/BGM Player.app"`。
+          releaseDraft: false
+          prerelease: false
+          args: --target aarch64-apple-darwin
+
+      - name: Upload artifacts (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bgm-player-macos-arm64
+          if-no-files-found: error
+          path: |
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app
