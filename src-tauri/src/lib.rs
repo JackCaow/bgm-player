@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tauri::{Emitter, Manager, Window};
 
+pub mod separator;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrackInfo {
     pub track_type: String,
@@ -195,6 +197,57 @@ async fn extract_bgm(
             .join("BGM Extractor Output")
     };
 
+    // ONNX fork: route htdemucs 2-track through the bundled Rust ONNX separator.
+    // On any error we log and fall through to the unchanged binary/python path.
+    // `BGM_DISABLE_ONNX=1` (any value) forces the python/binary path.
+    let mode = separation_mode.as_deref().unwrap_or("2-track");
+    let use_onnx = model == "htdemucs"
+        && mode == "2-track"
+        && std::env::var("BGM_DISABLE_ONNX").is_err();
+    if use_onnx {
+        let res_dir = app.path().resource_dir().unwrap_or_default();
+        let w = window.clone();
+        let progress = move |p: f32, s: &str| {
+            // reuse the existing "processing" stage so the frontend (which may
+            // switch on stage) needs zero changes
+            let _ = w.emit(
+                "extraction-progress",
+                ProgressPayload {
+                    progress: p as f64,
+                    status: s.to_string(),
+                    stage: "processing".to_string(),
+                },
+            );
+        };
+        match crate::separator::separate_htdemucs_2track(
+            &res_dir,
+            std::path::Path::new(&input),
+            &output_dir,
+            &get_ffmpeg_path(&app),
+            &progress,
+        ) {
+            Ok(_paths) => {
+                // Re-enter the shared tail just like the python path does, using
+                // the produced output dir/stems. Returns the same ExtractResult.
+                return finalize_extraction(
+                    &app,
+                    &window,
+                    &input_path,
+                    &output_dir,
+                    &model,
+                    mode,
+                    format.as_deref(),
+                    bitrate,
+                    sample_rate,
+                );
+            }
+            Err(e) => {
+                eprintln!("[onnx] fallback to python: {e}");
+                // fall through to the existing binary/python path unchanged
+            }
+        }
+    }
+
     let _ = window.emit(
         "extraction-progress",
         ProgressPayload {
@@ -347,6 +400,37 @@ async fn extract_bgm(
         }
     }
 
+    finalize_extraction(
+        &app,
+        &window,
+        &input_path,
+        &output_dir,
+        &model,
+        separation_mode.as_deref().unwrap_or("2-track"),
+        format.as_deref(),
+        bitrate,
+        sample_rate,
+    )
+}
+
+/// Shared post-extraction tail used by both the python/binary path and the
+/// Rust ONNX path. Discovers the produced stem files, validates their
+/// existence, optionally converts them to the requested format, and assembles
+/// the final `ExtractResult`. Both extraction backends write the same on-disk
+/// layout (`<output_dir>/<model>/<input_stem>/<track>.wav`), so this stays
+/// backend-agnostic.
+#[allow(clippy::too_many_arguments)]
+fn finalize_extraction(
+    app: &tauri::AppHandle,
+    window: &Window,
+    input_path: &std::path::Path,
+    output_dir: &std::path::Path,
+    model: &str,
+    mode: &str,
+    format: Option<&str>,
+    bitrate: Option<u32>,
+    sample_rate: Option<u32>,
+) -> Result<ExtractResult, String> {
     let _ = window.emit(
         "extraction-progress",
         ProgressPayload {
@@ -361,8 +445,7 @@ async fn extract_bgm(
         .and_then(|s| s.to_str())
         .ok_or("无法获取文件名")?;
 
-    let result_dir = output_dir.join(&model).join(stem);
-    let mode = separation_mode.as_deref().unwrap_or("2-track");
+    let result_dir = output_dir.join(model).join(stem);
 
     // Build track list based on separation mode and model
     // htdemucs_6s outputs 6 tracks, others output 4 tracks
@@ -396,7 +479,7 @@ async fn extract_bgm(
     }
 
     // Convert format if requested and not WAV
-    let final_format = format.as_deref().unwrap_or("wav");
+    let final_format = format.unwrap_or("wav");
     if final_format != "wav" {
         let _ = window.emit(
             "extraction-progress",
@@ -411,7 +494,7 @@ async fn extract_bgm(
         for track in &mut tracks {
             let track_path = PathBuf::from(&track.path);
             let converted_path = convert_audio_format(
-                &app,
+                app,
                 &track_path,
                 final_format,
                 bitrate,

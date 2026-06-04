@@ -22,3 +22,6 @@ src-tauri/binaries
 # Internal docs (not published)
 docs/
 ROADMAP.md
+
+# Generated ONNX model weights (produced by script/export_onnx.py)
+src-tauri/resources/models/*.onnx

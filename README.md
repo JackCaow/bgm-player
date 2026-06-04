@@ -77,6 +77,31 @@ npm run tauri:build      # native bundle (.app / .dmg on macOS)
 
 For a fully self-contained bundle, the app can ship standalone sidecar binaries (`bgm-extractor`, `ffmpeg`, `ffprobe`) under `src-tauri/binaries/`. Build the extractor binary with `script/build_binary.py` (PyInstaller) and add FFmpeg/FFprobe, then re-enable the `externalBin` entries in `src-tauri/tauri.conf.json`. Without those, the app relies on a system Python (with Demucs) and a system FFmpeg at runtime.
 
+### Standalone build (offline ONNX)
+
+The recommended way to ship is the bundled ONNX path: a native Rust separator runs the htdemucs model with [ONNX Runtime](https://onnxruntime.ai/), so **htdemucs 2-track (vocals + BGM) extraction works fully offline with no Python/PyTorch on the user's machine.**
+
+1. **Generate the ONNX model first.** The weights (`src-tauri/resources/models/htdemucs.onnx`, ~300 MB) are gitignored, so they must exist on disk before bundling — otherwise the bundler will fail (the resource is required):
+
+   ```bash
+   .venv/bin/python script/export_onnx.py
+   ```
+
+2. **Build the bundle:**
+
+   ```bash
+   npm run tauri:build      # native bundle (.app / .dmg on macOS)
+   ```
+
+   The model is declared in `src-tauri/tauri.conf.json` under `bundle.resources` as a map (`"resources/models/htdemucs.onnx": "models/htdemucs.onnx"`), which places it at `Contents/Resources/models/htdemucs.onnx` inside the `.app` — exactly where the Rust `resolve_model_path` looks for it in production.
+
+Notes:
+
+- The ONNX path covers **htdemucs 2-track** only. Other models (`htdemucs_ft`, `htdemucs_6s`, `mdx_extra`) and multi-stem modes still use the Python/Demucs environment.
+- Set `BGM_DISABLE_ONNX=1` (any value) to force the legacy Python path even for htdemucs 2-track.
+- ONNX Runtime currently uses the CPU execution provider. The `coreml` ort feature is a future toggle for CoreML/ANE acceleration on Apple Silicon.
+- The bundled `.app` is large (~300 MB model + the statically linked ONNX Runtime), so the resulting `.app`/`.dmg` runs to several hundred MB.
+
 ## Models
 
 | Model | Stems | Notes |
