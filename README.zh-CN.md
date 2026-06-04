@@ -14,6 +14,10 @@
 
 <p align="center"><img src="assets/screenshot.png" alt="BGM Player 截图" width="760"></p>
 
+## 下载
+
+从 [**Releases**](https://github.com/JackCaow/bgm-player/releases/latest) 下载最新的**已签名 + 已公证**的 macOS 安装包(Apple Silicon):下载 `.dmg`,把 **BGM Player** 拖进「应用程序」,双击即用。htdemucs 人声/伴奏分离**完全离线运行**,无需 Python 或额外配置。
+
 ## 功能特性
 
 - 🎵 **人声 / 背景音乐分离** —— 去掉人声保留伴奏,或将音轨拆分为 2 / 4 / 6 个音轨。
@@ -32,10 +36,10 @@
 |------|-------|
 | 前端 | Vue 3 · TypeScript · Tailwind CSS · reka-ui |
 | 桌面外壳 | Tauri 2(Rust) |
-| 音频分离 | Python · [Demucs](https://github.com/adefossez/demucs)(PyTorch) |
+| 音频分离 | Rust · [ONNX Runtime](https://onnxruntime.ai/)(htdemucs)+ Python · [Demucs](https://github.com/adefossez/demucs) 回退 |
 | 音频读写与合并 | FFmpeg |
 
-Rust 后端向前端暴露 `extract_bgm` 与 `merge_tracks` 命令。提取在生产环境调用打包好的独立二进制,在开发环境回退到 Python 脚本;合并使用 FFmpeg 完成。
+Rust 后端向前端暴露 `extract_bgm` 与 `merge_tracks`。**htdemucs 2 轨(人声 + 伴奏)分离在 Rust 进程内通过 ONNX Runtime 完成 —— 运行时不需要 Python**,这正是发布版能自包含、离线运行的原因。其它模型/模式(`htdemucs_ft`、`htdemucs_6s`、`mdx_extra`,以及 4/6 轨)回退到 Python/Demucs 脚本。合并使用 FFmpeg。
 
 ## 环境要求
 
@@ -71,11 +75,7 @@ bash script/dev.sh
 
 ## 构建
 
-```bash
-npm run tauri:build      # 原生安装包(macOS 上为 .app / .dmg)
-```
-
-若要打包成完全自包含的安装包,应用可以携带独立的 sidecar 二进制(`bgm-extractor`、`ffmpeg`、`ffprobe`),放在 `src-tauri/binaries/` 下:用 `script/build_binary.py`(PyInstaller)构建提取器二进制并加入 FFmpeg/FFprobe,然后在 `src-tauri/tauri.conf.json` 中重新启用 `externalBin`。否则应用在运行时依赖系统 Python(已装 Demucs)与系统 FFmpeg。
+> 大多数用户直接 **[下载发布版](https://github.com/JackCaow/bgm-player/releases/latest)** 即可 —— 已签名、已公证、自包含。只有要改代码时才需要本地构建。
 
 ### 独立构建(离线 ONNX)
 
@@ -102,6 +102,10 @@ npm run tauri:build      # 原生安装包(macOS 上为 .app / .dmg)
 - ONNX Runtime 当前使用 CPU 执行提供器(EP)。`coreml` 这个 ort feature 是未来用于开启 CoreML/ANE 加速(Apple Silicon)的开关。
 - 打包出的 `.app` 体积较大(约 300 MB 模型 + 静态链接的 ONNX Runtime),最终 `.app`/`.dmg` 会达到数百 MB。
 
+### 自动发版(CI)
+
+推送 `vX.Y.Z` tag 会在 macOS(Apple Silicon)runner 上运行 [`.github/workflows/release.yml`](.github/workflows/release.yml):从 `models` Release 资产拉取 htdemucs ONNX 模型,构建,**代码签名 + 公证**(配置了 `APPLE_*` 仓库 secret 时),并把 `.dmg`/`.app` 发布到 GitHub Release。没配 Apple secret 也能构建,只是未签名(打开需 `xattr -cr "/Applications/BGM Player.app"`)。
+
 ## 模型
 
 | 模型 | 音轨数 | 说明 |
@@ -115,8 +119,8 @@ npm run tauri:build      # 原生安装包(macOS 上为 .app / .dmg)
 
 ```
 src/                 Vue 3 前端(组件、composables、i18n、工具)
-src-tauri/           Rust 后端(Tauri 命令在 src/lib.rs)
-script/              Python 提取脚本 + 开发启动脚本(dev.sh)
+src-tauri/           Rust 后端 —— Tauri 命令(src/lib.rs)+ ONNX 分离器(src/separator/)
+script/              Python 提取 + ONNX 导出(export_onnx.py)+ 开发启动脚本(dev.sh)
 assets/              README 使用的截图等静态资源
 ```
 

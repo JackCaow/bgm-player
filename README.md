@@ -14,6 +14,10 @@
 
 <p align="center"><img src="assets/screenshot.png" alt="BGM Player screenshot" width="760"></p>
 
+## Download
+
+Grab the latest **signed & notarized** macOS build (Apple Silicon) from [**Releases**](https://github.com/JackCaow/bgm-player/releases/latest): download the `.dmg`, drag **BGM Player** to Applications, double-click. htdemucs vocal/BGM separation runs fully offline — no Python or extra setup required.
+
 ## Features
 
 - 🎵 **Vocal / BGM separation** — strip vocals to keep the instrumental, or split a track into 2 / 4 / 6 stems.
@@ -32,10 +36,10 @@
 |------|-------|
 | Frontend | Vue 3 · TypeScript · Tailwind CSS · reka-ui |
 | Desktop shell | Tauri 2 (Rust) |
-| Audio separation | Python · [Demucs](https://github.com/adefossez/demucs) (PyTorch) |
+| Audio separation | Rust · [ONNX Runtime](https://onnxruntime.ai/) (htdemucs) + Python · [Demucs](https://github.com/adefossez/demucs) fallback |
 | Audio I/O & merging | FFmpeg |
 
-The Rust backend exposes `extract_bgm` and `merge_tracks` commands to the frontend. Extraction runs either a bundled standalone binary (production) or a Python script (development); merging is done with FFmpeg.
+The Rust backend exposes `extract_bgm` and `merge_tracks`. **htdemucs 2-track (vocals + BGM) separation runs in-process via Rust + ONNX Runtime — no Python at runtime**, which is what makes the shipped app self-contained and offline. Other models/modes (`htdemucs_ft`, `htdemucs_6s`, `mdx_extra`, and 4/6-track) fall back to a Python/Demucs script. Merging uses FFmpeg.
 
 ## Prerequisites
 
@@ -71,11 +75,7 @@ If you have a system-wide Python with Demucs already installed, you can run `npm
 
 ## Building
 
-```bash
-npm run tauri:build      # native bundle (.app / .dmg on macOS)
-```
-
-For a fully self-contained bundle, the app can ship standalone sidecar binaries (`bgm-extractor`, `ffmpeg`, `ffprobe`) under `src-tauri/binaries/`. Build the extractor binary with `script/build_binary.py` (PyInstaller) and add FFmpeg/FFprobe, then re-enable the `externalBin` entries in `src-tauri/tauri.conf.json`. Without those, the app relies on a system Python (with Demucs) and a system FFmpeg at runtime.
+> Most users should just **[download a release](https://github.com/JackCaow/bgm-player/releases/latest)** — it's signed, notarized, and self-contained. Build locally only if you're hacking on the app.
 
 ### Standalone build (offline ONNX)
 
@@ -102,6 +102,10 @@ Notes:
 - ONNX Runtime currently uses the CPU execution provider. The `coreml` ort feature is a future toggle for CoreML/ANE acceleration on Apple Silicon.
 - The bundled `.app` is large (~300 MB model + the statically linked ONNX Runtime), so the resulting `.app`/`.dmg` runs to several hundred MB.
 
+### Automated releases (CI)
+
+Pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml) on a macOS (Apple Silicon) runner: it fetches the htdemucs ONNX model from the `models` release asset, builds, **code-signs + notarizes** (when the `APPLE_*` repository secrets are configured), and publishes the `.dmg`/`.app` to a GitHub Release. Without the Apple secrets it still builds, but unsigned (open via `xattr -cr "/Applications/BGM Player.app"`).
+
 ## Models
 
 | Model | Stems | Notes |
@@ -115,8 +119,8 @@ Notes:
 
 ```
 src/                 Vue 3 frontend (components, composables, i18n, utils)
-src-tauri/           Rust backend (Tauri commands in src/lib.rs)
-script/              Python extraction scripts + dev launcher (dev.sh)
+src-tauri/           Rust backend — Tauri commands (src/lib.rs) + ONNX separator (src/separator/)
+script/              Python extraction + ONNX export (export_onnx.py) + dev launcher (dev.sh)
 assets/              Screenshots and static assets used by the README
 ```
 
