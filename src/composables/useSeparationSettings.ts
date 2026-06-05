@@ -23,6 +23,8 @@ function loadSettings() {
   } catch (error) {
     console.error("Failed to load separation settings:", error);
   }
+  // 打包版仅支持 2 轨(人声 + 伴奏);忽略遗留的 4/6 轨持久化值。
+  settings.value.mode = "2-track";
 }
 
 // Save settings to localStorage

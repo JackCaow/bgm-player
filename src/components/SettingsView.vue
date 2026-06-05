@@ -28,6 +28,7 @@ const emit = defineEmits<{
   selectOutputDir: [];
 }>();
 
+// 打包版仅 htdemucs(ONNX 路径)真正可用,其它模型入口暂不开放。
 const modelOptions = computed<ModelOption[]>(() => [
   {
     value: "htdemucs",
@@ -36,44 +37,10 @@ const modelOptions = computed<ModelOption[]>(() => [
     speed: t("model.speed.fast"),
     quality: t("model.quality.excellent"),
   },
-  {
-    value: "htdemucs_ft",
-    label: "htdemucs_ft",
-    desc: t("model.htdemucs_ft.desc"),
-    speed: t("model.speed.slow"),
-    quality: t("model.quality.top"),
-  },
-  {
-    value: "htdemucs_6s",
-    label: "htdemucs_6s",
-    desc: t("model.htdemucs_6s.desc"),
-    speed: t("model.speed.fast"),
-    quality: t("model.quality.excellent"),
-  },
-  {
-    value: "mdx_extra",
-    label: "mdx_extra",
-    desc: t("model.mdx_extra.desc"),
-    speed: t("model.speed.medium"),
-    quality: t("model.quality.excellent"),
-  },
 ]);
 
-// 获取模型支持的轨道选项
-function getAvailableTracks(modelValue: string) {
-  if (modelValue === "htdemucs_6s") {
-    return [
-      { value: "2-track", label: t("separation.twoTrack"), icon: "solar:music-note-2-bold" },
-      { value: "4-track", label: t("separation.fourTrack"), icon: "solar:music-notes-bold" },
-      { value: "6-track", label: t("separation.sixTrack"), icon: "solar:soundwave-bold" },
-    ];
-  }
-  if (modelValue === "htdemucs" || modelValue === "htdemucs_ft") {
-    return [
-      { value: "2-track", label: t("separation.twoTrack"), icon: "solar:music-note-2-bold" },
-      { value: "4-track", label: t("separation.fourTrack"), icon: "solar:music-notes-bold" },
-    ];
-  }
+// 打包版仅支持 htdemucs 2 轨(人声 + 伴奏),其它轨道模式暂不开放。
+function getAvailableTracks(_modelValue: string) {
   return [
     { value: "2-track", label: t("separation.twoTrack"), icon: "solar:music-note-2-bold" },
   ];
