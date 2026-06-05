@@ -58,6 +58,18 @@ jobs:
             --output src-tauri/resources/models/htdemucs.onnx
           ls -la src-tauri/resources/models/
 
+      - name: Download bundled ffmpeg (static arm64 sidecar)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p src-tauri/binaries
+          gh release download "$MODEL_RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "ffmpeg-aarch64-apple-darwin" \
+            --output src-tauri/binaries/ffmpeg-aarch64-apple-darwin
+          chmod +x src-tauri/binaries/ffmpeg-aarch64-apple-darwin
+          ls -la src-tauri/binaries/
+
       - name: Build (and release on tag) with Tauri
         id: tauri
         uses: tauri-apps/tauri-action@v0
