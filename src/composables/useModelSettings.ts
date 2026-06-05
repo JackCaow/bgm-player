@@ -5,11 +5,15 @@ const STORAGE_KEY = "model-settings";
 // Global state
 const model = ref<string>("htdemucs");
 
+// 打包版仅支持 htdemucs(ONNX 路径)。其它模型入口已从 UI 移除;
+// 忽略任何遗留的持久化值,回落到 htdemucs。
+const SUPPORTED_MODELS = ["htdemucs"];
+
 // Load settings from localStorage
 function loadSettings() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+    if (stored && SUPPORTED_MODELS.includes(stored)) {
       model.value = stored;
     }
   } catch (error) {
